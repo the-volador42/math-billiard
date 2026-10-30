@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Математический бильярд</title>
+<meta name="description" content="Интерактивный математический бильярд: траектории, каустики, волновой фронт, фазовый портрет, 2D и 3D.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap">
+<style>
+/* Layout: one-screen instrument — controls rail on the left, the table on graph paper fills the rest; stacks on phones. */
+:root{
+  --bg:#FFF4EA; --panel:#FFFBF7; --ink:#2A1408; --muted:#8C5B3B; --line:#F0D5BE;
+  --accent:#EE660C; --accent-soft:#FFE2CA; --accent-ink:#FFFFFF;
+  --table:#FFE6D0; --edge:#DE560A; --trail:#D45000; --grid:#F2D9C3;
+  --c1:#E85D04; --c2:#F48C06; --c3:#B83A0B; --c4:#FB8500; --c5:#8A2F0E;
+  --blend:source-over;
+  --f-display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#070403; --panel:#120B07; --ink:#FFE9D8; --muted:#C08A63; --line:#2E1C11;
+    --accent:#FF7A1A; --accent-soft:#3A1D0A; --accent-ink:#1A0B03;
+    --table:#0E0805; --edge:#FF8A2B; --trail:#FF7F1F; --grid:#1E120A;
+    --c1:#FF8A1F; --c2:#FFC46B; --c3:#FF5A1F; --c4:#FFA552; --c5:#FFDCA8;
+    --blend:lighter; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#070403; --panel:#120B07; --ink:#FFE9D8; --muted:#C08A63; --line:#2E1C11;
+  --accent:#FF7A1A; --accent-soft:#3A1D0A; --accent-ink:#1A0B03;
+  --table:#0E0805; --edge:#FF8A2B; --trail:#FF7F1F; --grid:#1E120A;
+  --c1:#FF8A1F; --c2:#FFC46B; --c3:#FF5A1F; --c4:#FFA552; --c5:#FFDCA8;
+  --blend:lighter; color-scheme:dark;
+}
+[hidden]{display:none !important}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:14px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:12px; box-sizing:border-box;
+}
+*,*::before,*::after{box-sizing:border-box}
+.app{
+  height:100%; display:grid; gap:12px;
+  grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);
+}
+.top{grid-column:1/-1; display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+.brand{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; min-width:0; margin-right:auto}
+h1{font-family:var(--f-display); font-weight:700; font-size:20px; letter-spacing:-.01em; margin:0; color:var(--ink); text-wrap:balance}
+h1 b{color:var(--accent); font-weight:700}
+.law{font-family:var(--f-mono); font-size:12px; color:var(--muted)}
+.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
+.stats{font-size:12px; color:var(--muted)}
+.stats b{color:var(--ink); font-weight:600}
+
+.seg{display:inline-flex; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:3px; gap:2px}
+.seg button{
+  font:600 13px var(--f-body); color:var(--muted); background:transparent; border:0; border-radius:999px;
+  padding:7px 16px; cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink)}
+.seg.small button{padding:6px 12px; font-size:12px}
+.seg.wide{display:flex}
+.seg.wide button{flex:1}
+.modes button{font-family:var(--f-display); font-weight:500; letter-spacing:.02em; min-width:58px}
+
+.side{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:22px; min-height:0;
+}
+.blk{display:flex; flex-direction:column; gap:10px}
+.blk h2{
+  margin:0; font:600 11px var(--f-body); text-transform:uppercase; letter-spacing:.12em; color:var(--muted);
+}
+.tools{display:grid; grid-template-columns:repeat(3,1fr); gap:6px}
+.tool{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 7px;
+  background:transparent; border:1px solid var(--line); border-radius:10px; cursor:pointer;
+  color:var(--ink); font:600 11px var(--f-body);
+}
+.tool svg{width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round}
+.tool[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.tool:hover:not([aria-pressed="true"]){border-color:var(--accent)}
+
+.presets{display:grid; grid-template-columns:repeat(4,1fr); gap:6px}
+.chip{
+  display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 2px 5px;
+  background:transparent; border:1px solid var(--line); border-radius:10px; cursor:pointer;
+  color:var(--ink); font:500 11px var(--f-body); min-width:0;
+}
+.chip canvas{width:44px; height:32px; display:block}
+.chip[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft)}
+.chip:hover{border-color:var(--accent)}
+.p3{grid-template-columns:repeat(2,1fr)}
+.p3 .chip{flex-direction:row; justify-content:flex-start; padding:9px 10px; font-size:12px; font-weight:600}
+
+.field{display:flex; flex-direction:column; gap:4px}
+.field .row{display:flex; justify-content:space-between; align-items:baseline; font-size:13px}
+.field output{font-family:var(--f-mono); font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums}
+input[type=range]{width:100%; accent-color:var(--accent); margin:2px 0}
+.check{display:flex; gap:8px; align-items:center; font-size:13px; cursor:pointer}
+.check input{accent-color:var(--accent); width:16px; height:16px}
+.btns{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+.btn{
+  font:600 13px var(--f-body); padding:9px 10px; border-radius:10px; cursor:pointer;
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); grid-column:1/-1}
+.note{font-size:12px; color:var(--muted); margin:0; line-height:1.45}
+.opts.stack{display:flex; flex-direction:column; gap:10px}
+.opts[hidden]{display:none}
+
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.stage{
+  position:relative; min-height:0; border-radius:14px; overflow:hidden; border:1px solid var(--line);
+  background-color:var(--bg);
+  background-image:radial-gradient(circle, var(--grid) 1.1px, transparent 1.4px);
+  background-size:22px 22px; background-position:11px 11px;
+}
+.stage:fullscreen{border-radius:0; border:0}
+.stage:-webkit-full-screen{border-radius:0; border:0; width:100%; height:100%}
+.stage.max{position:fixed; inset:0; z-index:50; border-radius:0; border:0}
+.stage-btns{position:absolute; top:12px; left:12px; display:flex; gap:6px; z-index:2}
+.ibtn{
+  width:36px; height:36px; display:grid; place-items:center; padding:0; cursor:pointer;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px;
+}
+.ibtn:hover{border-color:var(--accent); color:var(--accent)}
+.ibtn svg{width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.ibtn[hidden]{display:none}
+#c2d,#three{position:absolute; inset:0; width:100%; height:100%}
+#c2d{touch-action:none; display:block}
+#three canvas{display:block; touch-action:none}
+.phase{
+  position:absolute; top:12px; right:12px; width:240px; padding:10px 10px 8px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  display:flex; flex-direction:column; gap:6px; pointer-events:none;
+}
+.phase-h{display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em}
+.phase-plot{position:relative; display:grid; grid-template-columns:auto 1fr; gap:6px}
+.phase canvas{width:100%; height:130px; display:block; border-left:1px solid var(--line); border-bottom:1px solid var(--line)}
+.yax{display:flex; flex-direction:column; justify-content:space-between; font-size:10px; color:var(--muted); text-align:right}
+.xax{display:flex; justify-content:space-between; font-size:10px; color:var(--muted); padding-left:22px}
+.hint{
+  position:absolute; left:12px; bottom:12px; margin:0; max-width:min(440px, calc(100% - 24px));
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px;
+  font-size:12.5px; line-height:1.4; color:var(--ink); pointer-events:none;
+}
+.toast{
+  position:absolute; left:50%; top:14px; transform:translateX(-50%);
+  background:var(--ink); color:var(--bg); font-weight:600; font-size:13px; padding:8px 14px; border-radius:999px;
+}
+.err{position:absolute; inset:auto 12px 60px 12px; margin:0; color:var(--accent); font-weight:600; text-align:center}
+
+@media (max-width:820px){
+  .app{height:auto; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto auto}
+  .stage{height:62svh; min-height:360px; order:2}
+  .side{order:3; overflow:visible}
+  .top{order:1}
+  .phase{width:170px; top:8px; right:8px; padding:8px}
+  .phase canvas{height:84px}
+  .hint{font-size:12px; left:8px; bottom:8px}
+  .stage-btns{top:8px; left:8px}
+}
+@media (max-width:420px){ .law{display:none} .tool{font-size:10px} }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Математический <b>бильярд</b></h1>
+      <span class="law">угол падения = углу отражения</span>
+    </div>
+    <div class="seg modes" role="group" aria-label="Режим">
+      <button id="m2d" data-mode="2d" aria-pressed="true">2D</button>
+      <button id="m3d" data-mode="3d" aria-pressed="false">3D</button>
+    </div>
+    <div class="stats mono" id="stats">шаров <b>0</b> · отражений <b>0</b></div>
+  </header>
+
+  <aside class="side">
+    <section class="blk" data-only="2d">
+      <h2>Инструмент</h2>
+      <div class="tools" role="group" aria-label="Инструмент">
+        <button class="tool" data-tool="ball" aria-pressed="true" title="Запустить шар">
+          <svg viewBox="0 0 24 24"><circle cx="7" cy="16" r="3.2"/><path d="M10 13l9-8M14 5h5v5"/></svg>Шар</button>
+        <button class="tool" data-tool="brush" aria-pressed="false" title="Нарисовать форму">
+          <svg viewBox="0 0 24 24"><path d="M3 15c3-7 6 4 9-3s6-5 9 1"/><path d="M4 20h16" opacity=".5"/></svg>Кисть</button>
+        <button class="tool" data-tool="stretch" aria-pressed="false" title="Растянуть форму">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="5" ry="4"/><path d="M2 12h3M19 12h3M3.5 10.5L2 12l1.5 1.5M20.5 10.5L22 12l-1.5 1.5M12 2v4M12 18v4"/></svg>Растянуть</button>
+        <button class="tool" data-tool="warp" aria-pressed="false" title="Выдавить или вдавить границу">
+          <svg viewBox="0 0 24 24"><path d="M3 18c4 0 5-9 9-9s5 9 9 9"/><path d="M12 3v4M10.5 5.5L12 7l1.5-1.5"/></svg>Деформ.</button>
+        <button class="tool" data-tool="smooth" aria-pressed="false" title="Сгладить границу">
+          <svg viewBox="0 0 24 24"><path d="M3 9l3-3 3 3 3-3 3 3 3-3 3 3" opacity=".5"/><path d="M3 17c6-3 12-3 18 0"/></svg>Сгладить</button>
+        <button class="tool" data-tool="wave" aria-pressed="false" title="Волновой фронт из точки">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><path d="M8.3 8.3a5.2 5.2 0 0 0 0 7.4M15.7 8.3a5.2 5.2 0 0 1 0 7.4M5.2 5.2a9.6 9.6 0 0 0 0 13.6M18.8 5.2a9.6 9.6 0 0 1 0 13.6"/></svg>Волна</button>
+      </div>
+      <div class="opts" data-for="brush" hidden>
+        <div class="seg small wide" role="group" aria-label="Что рисует кисть">
+          <button data-target="outer" aria-pressed="true">Новая граница</button>
+          <button data-target="hole" aria-pressed="false">Препятствие</button>
+        </div>
+      </div>
+      <div class="opts field" data-for="warp smooth" hidden>
+        <label class="row" for="radius"><span>Размер кисти</span><output id="radiusOut"></output></label>
+        <input type="range" id="radius" min="0.06" max="0.7" step="0.01" value="0.25">
+      </div>
+      <div class="opts stack" data-for="wave" hidden>
+        <div class="field"><label class="row" for="rays"><span>Лучей во фронте</span><output id="raysOut"></output></label><input type="range" id="rays" min="90" max="3000" step="10" value="720"></div>
+        <label class="check"><input type="checkbox" id="iso" checked> Изохроны — отпечатки фронта</label>
+        <p class="note">Фронт — точки, до которых лучи из источника дошли за одно и то же время. После отражений на нём появляются острия: они бегут по каустике.</p>
+      </div>
+    </section>
+
+    <section class="blk" data-only="2d">
+      <h2>Готовые формы</h2>
+      <div class="presets" id="presets"></div>
+    </section>
+
+    <section class="blk" data-only="3d" hidden>
+      <h2>Форма</h2>
+      <div class="presets p3" id="shapes3d"></div>
+      <p class="note">«Призма из 2D» выдавливает текущую форму из 2D-режима, включая нарисованную кистью.</p>
+    </section>
+
+    <section class="blk" data-only="3d" hidden>
+      <h2>Растянуть</h2>
+      <div class="field"><label class="row" for="sx"><span>По оси X</span><output id="sxOut"></output></label><input type="range" id="sx" min="0.4" max="2.2" step="0.01" value="1"></div>
+      <div class="field"><label class="row" for="sy"><span>По оси Y</span><output id="syOut"></output></label><input type="range" id="sy" min="0.4" max="2.2" step="0.01" value="1"></div>
+      <div class="field"><label class="row" for="sz"><span>По оси Z</span><output id="szOut"></output></label><input type="range" id="sz" min="0.4" max="2.2" step="0.01" value="1"></div>
+    </section>
+
+    <section class="blk">
+      <h2>Запуск</h2>
+      <div class="field"><label class="row" for="fanN"><span>Шаров за удар (веер)</span><output id="fanNOut"></output></label><input type="range" id="fanN" min="1" max="40" step="1" value="1"></div>
+      <div class="field"><label class="row" for="spread"><span>Раскрытие веера</span><output id="spreadOut"></output></label><input type="range" id="spread" min="0.1" max="30" step="0.1" value="2"></div>
+      <div class="field"><label class="row" for="speed"><span>Скорость</span><output id="speedOut"></output></label><input type="range" id="speed" min="0.1" max="6" step="0.1" value="1"></div>
+      <div class="btns">
+        <button class="btn primary" id="bLaunch">Запустить в случайную точку</button>
+        <button class="btn" id="bPause">Пауза</button>
+        <button class="btn" id="bClear">Стереть следы</button>
+        <button class="btn" id="bRemove" style="grid-column:1/-1">Убрать все шары</button>
+      </div>
+    </section>
+
+    <section class="blk" data-only="2d">
+      <h2>Следы</h2>
+      <div class="field"><label class="row" for="fade"><span>Затухание</span><output id="fadeOut"></output></label><input type="range" id="fade" min="0" max="100" step="1" value="0"></div>
+      <label class="check"><input type="checkbox" id="showPhase" checked> Фазовый портрет</label>
+      <p class="note">Без затухания следы копятся и проявляют каустики: в эллипсе это софокусные эллипсы и гиперболы, в стадионе — хаос.</p>
+    </section>
+
+    <section class="blk" data-only="3d" hidden>
+      <h2>Вид</h2>
+      <div class="field"><label class="row" for="trail3"><span>Длина следа, отражений</span><output id="trail3Out"></output></label><input type="range" id="trail3" min="10" max="3000" step="10" value="500"></div>
+      <label class="check"><input type="checkbox" id="autorot"> Вращать камеру</label>
+    </section>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="c2d" aria-label="Бильярдный стол"></canvas>
+    <div id="three" hidden></div>
+    <div class="stage-btns">
+      <button class="ibtn" id="bTheme" aria-label="Сменить тему"></button>
+      <button class="ibtn" id="bFull" aria-label="На весь экран"></button>
+    </div>
+    <div class="phase" id="phaseBox">
+      <div class="phase-h"><span>Фазовый портрет</span><span class="mono">s, cos φ</span></div>
+      <div class="phase-plot">
+        <div class="yax mono"><span>1</span><span>0</span><span>−1</span></div>
+        <canvas id="phase"></canvas>
+      </div>
+      <div class="xax mono"><span>0</span><span>положение s на границе</span><span>1</span></div>
+    </div>
+    <p class="hint" id="hint"></p>
+    <div class="toast" id="toast" hidden></div>
+    <p class="err" id="err3d" hidden>3D не загрузился: библиотека Three.js недоступна. Проверьте соединение и обновите страницу.</p>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const root = document.documentElement;
+const cssv = n => getComputedStyle(root).getPropertyValue(n).trim();
+const TAU = Math.PI * 2;
+// restore the theme chosen with the button (before colors are read)
+try{ const t=localStorage.getItem('mb-theme'); if(t==='dark'||t==='light') root.dataset.theme=t; }catch(e){}
+let TH = {};
+function readTheme(){
+  TH = { bg:cssv('--bg'), table:cssv('--table'), edge:cssv('--edge'), ink:cssv('--ink'), muted:cssv('--muted'),
+    accent:cssv('--accent'), soft:cssv('--accent-soft'), panel:cssv('--panel'), line:cssv('--line'),
+    blend:cssv('--blend') || 'source-over', balls:['--c1','--c2','--c3','--c4','--c5'].map(cssv) };
+  TH.dark = TH.blend === 'lighter';
+}
+readTheme();
+
+/* ---------- geometry ---------- */
+const SP = 0.012; // point spacing in world units
+function clean(p){ const o=[]; for(const q of p){ const l=o[o.length-1]; if(!l || Math.hypot(q[0]-l[0],q[1]-l[1])>1e-6) o.push(q); }
+  if(o.length>2 && Math.hypot(o[0][0]-o[o.length-1][0], o[0][1]-o[o.length-1][1])<1e-6) o.pop(); return o; }
+function densify(v){ v=clean(v); const o=[], n=v.length;
+  for(let i=0;i<n;i++){ const a=v[i], b=v[(i+1)%n], L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/SP));
+    for(let k=0;k<m;k++){ const t=k/m; o.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); } }
+  return o; }
+function resample(p, sp=SP){ p=clean(p); const n=p.length; if(n<3) return p; const d=new Float64Array(n); let tot=0;
+  for(let i=0;i<n;i++){ const a=p[i], b=p[(i+1)%n]; d[i]=Math.hypot(b[0]-a[0],b[1]-a[1]); tot+=d[i]; }
+  const m=Math.max(16, Math.round(tot/sp)), st=tot/m, o=[]; let i=0, acc=0;
+  for(let k=0;k<m;k++){ const tg=k*st; while(i<n-1 && acc+d[i]<tg){ acc+=d[i]; i++; }
+    const t=d[i]>0 ? Math.min(1,(tg-acc)/d[i]) : 0, a=p[i], b=p[(i+1)%n]; o.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); }
+  return o; }
+function relax(p, it=2, k=.5){ for(let s=0;s<it;s++){ const n=p.length, c=p.map(q=>q.slice());
+  for(let i=0;i<n;i++){ const a=c[(i-1+n)%n], b=c[(i+1)%n]; p[i][0]+=((a[0]+b[0])/2-p[i][0])*k; p[i][1]+=((a[1]+b[1])/2-p[i][1])*k; } } return p; }
+const param = (f,n) => resample(Array.from({length:n}, (_,i)=>f(i/n*TAU)));
+function arc(cx,cy,r,a0,a1){ const n=Math.max(2,Math.ceil(Math.abs(a1-a0)*r/SP)), o=[];
+  for(let i=0;i<=n;i++){ const a=a0+(a1-a0)*i/n; o.push([cx+r*Math.cos(a), cy+r*Math.sin(a)]); } return o; }
+const SQ = [[-.9,-.9],[.9,-.9],[.9,.9],[-.9,.9]];
+const LA = Math.acos(.55);
+const PRESETS = [
+  ['circle','Круг', ()=>[param(t=>[Math.cos(t),Math.sin(t)],500)]],
+  ['ellipse','Эллипс', ()=>[param(t=>[1.3*Math.cos(t),.8*Math.sin(t)],600)]],
+  ['stadium','Стадион', ()=>[densify([...arc(.55,0,.75,-Math.PI/2,Math.PI/2), ...arc(-.55,0,.75,Math.PI/2,1.5*Math.PI)])]],
+  ['square','Квадрат', ()=>[densify(SQ)]],
+  ['triangle','Треугольник', ()=>[densify([0,1,2].map(i=>{const a=Math.PI/2+i*TAU/3; return [1.15*Math.cos(a), 1.15*Math.sin(a)-.25];}))]],
+  ['star','Звезда', ()=>[densify(Array.from({length:10},(_,i)=>{const a=Math.PI/2+i*TAU/10, r=i%2?.47:1.08; return [r*Math.cos(a), r*Math.sin(a)-.05];}))]],
+  ['cardioid','Кардиоида', ()=>[param(t=>{const r=.64*(1-Math.cos(t)); return [r*Math.cos(t)+.56, r*Math.sin(t)];},700)]],
+  ['heart','Сердце', ()=>[param(t=>{const s=Math.sin(t); return [1.05*s*s*s, (13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16*1.05+.16];},700)]],
+  ['lemon','Лимон', ()=>[densify([...arc(-.55,0,1,-LA,LA), ...arc(.55,0,1,Math.PI-LA,Math.PI+LA)])]],
+  ['mushroom','Гриб', ()=>[densify([...arc(0,-.05,1,0,Math.PI), [-.28,-.05],[-.28,-1],[.28,-1],[.28,-.05]])]],
+  ['sinai','Синай', ()=>[densify(SQ), param(t=>[.38*Math.cos(t), .38*Math.sin(t)],300)]],
+  ['ring','Кольцо', ()=>[param(t=>[Math.cos(t),Math.sin(t)],500), param(t=>[.3+.36*Math.cos(t), .12+.36*Math.sin(t)],300)]],
+];
+
+/* ---------- 2D state ---------- */
+const S = { loops:[], seg:new Float64Array(0), n0:0, cum:new Float64Array(1), per:1,
+  tool:'ball', target:'outer', radius:.25, fanN:1, spread:2, speed:1, fade:0, paused:false,
+  balls:[], bounces:0, showPhase:true, preset:'ellipse', colorIx:0,
+  waves:[], rays:720, iso:true };
+const MAXW = 3;      // waves on the table at once
+const ISO_STEP = .16; // distance between front imprints (isochrones)
+const GAP2 = .15*.15; // neighbouring rays farther apart than this are not joined
+const MAXB = 300;
+
+function rebuild(){
+  let n=0; for(const L of S.loops) n+=L.length;
+  const seg=new Float64Array(n*4); let k=0;
+  for(const L of S.loops) for(let i=0;i<L.length;i++){ const a=L[i], b=L[(i+1)%L.length]; seg[k]=a[0]; seg[k+1]=a[1]; seg[k+2]=b[0]; seg[k+3]=b[1]; k+=4; }
+  S.seg=seg; S.n0=S.loops[0]?S.loops[0].length:0;
+  const cum=new Float64Array(S.n0+1); for(let i=0;i<S.n0;i++) cum[i+1]=cum[i]+Math.hypot(seg[i*4+2]-seg[i*4], seg[i*4+3]-seg[i*4+1]);
+  S.cum=cum; S.per=cum[S.n0]||1;
+}
+function insideSeg(seg,x,y){ let c=false;
+  for(let k=0;k<seg.length;k+=4){ const ay=seg[k+1], by=seg[k+3];
+    if((ay>y)!==(by>y)){ const ax=seg[k], bx=seg[k+2]; if(x < ax+(y-ay)*(bx-ax)/(by-ay)) c=!c; } }
+  return c; }
+function bbox(loops){ let a=1e9,b=1e9,c=-1e9,d=-1e9; for(const L of loops) for(const p of L){ if(p[0]<a)a=p[0]; if(p[1]<b)b=p[1]; if(p[0]>c)c=p[0]; if(p[1]>d)d=p[1]; } return [a,b,c,d]; }
+function randomInside(){ const [a,b,c,d]=bbox(S.loops.slice(0,1));
+  for(let i=0;i<500;i++){ const x=a+Math.random()*(c-a), y=b+Math.random()*(d-b); if(insideSeg(S.seg,x,y)) return [x,y]; }
+  return null; }
+function setLoops(loops, keepPhase){ S.loops=loops; rebuild(); shapeChanged(); }
+function shapeChanged(){
+  clearTrails(); clearPhase();
+  for(const b of S.balls){ if(!insideSeg(S.seg,b.x,b.y)){ const p=randomInside(); if(p){ b.x=p[0]; b.y=p[1]; } } b.last=-1; b.sx=b.x; b.sy=b.y; }
+  S.waves=[]; // a wave can't survive a change of the table
+}
+
+/* ---------- 2D canvases ---------- */
+const stage=$('#stage'), c2d=$('#c2d'), ctx=c2d.getContext('2d');
+const trailC=document.createElement('canvas'), tctx=trailC.getContext('2d');
+const phaseC=$('#phase'), pctx=phaseC.getContext('2d');
+let W=1,H=1,dpr=1,scale=1,cx=0,cy=0;
+function resize2d(){
+  const r=stage.getBoundingClientRect(); dpr=Math.min(window.devicePixelRatio||1,2);
+  W=Math.max(1,r.width); H=Math.max(1,r.height);
+  c2d.width=trailC.width=Math.round(W*dpr); c2d.height=trailC.height=Math.round(H*dpr);
+  scale=Math.min(W*.36, H*.4); cx=W/2; cy=H/2;
+  const pr=phaseC.getBoundingClientRect(); phaseC.width=Math.max(1,Math.round(pr.width*dpr)); phaseC.height=Math.max(1,Math.round(pr.height*dpr));
+}
+const toS=(x,y)=>[cx+x*scale, cy-y*scale];
+const toW=(x,y)=>[(x-cx)/scale, -(y-cy)/scale];
+function clearTrails(){ tctx.setTransform(1,0,0,1,0,0); tctx.clearRect(0,0,trailC.width,trailC.height); }
+function clearPhase(){ pctx.clearRect(0,0,phaseC.width,phaseC.height); }
+function phasePoint(s,p,color){
+  if(!S.showPhase) return;
+  pctx.globalCompositeOperation=TH.blend; pctx.globalAlpha=.75; pctx.fillStyle=color;
+  const r=Math.max(1,dpr*1.1); pctx.fillRect(s*phaseC.width-r/2, (1-p)/2*phaseC.height-r/2, r, r);
+}
+
+/* ---------- 2D physics ---------- */
+const buf=[];
+function stepBall(b, dist, quiet){
+  buf.length=0; buf.push(b.x,b.y);
+  const seg=S.seg, N=seg.length; let rem=dist, g=0;
+  while(rem>0 && g++<64){
+    let best=rem, bk=-1, bu=0;
+    for(let k=0;k<N;k+=4){ if((k>>2)===b.last) continue;
+      const ax=seg[k], ay=seg[k+1], ex=seg[k+2]-ax, ey=seg[k+3]-ay, den=b.vx*ey-b.vy*ex;
+      if(den>-1e-14 && den<1e-14) continue;
+      const wx=ax-b.x, wy=ay-b.y, t=(wx*ey-wy*ex)/den; if(t<=1e-10 || t>=best) continue;
+      const u=(wx*b.vy-wy*b.vx)/den; if(u<0||u>1) continue; best=t; bk=k>>2; bu=u; }
+    if(bk<0){ b.x+=b.vx*rem; b.y+=b.vy*rem; break; }
+    b.x+=b.vx*best; b.y+=b.vy*best; rem-=best;
+    const k=bk*4; let tx=seg[k+2]-seg[k], ty=seg[k+3]-seg[k+1]; const L=Math.hypot(tx,ty)||1; tx/=L; ty/=L;
+    const d=b.vx*tx+b.vy*ty; let vx=2*d*tx-b.vx, vy=2*d*ty-b.vy; const nv=Math.hypot(vx,vy)||1; b.vx=vx/nv; b.vy=vy/nv;
+    b.last=bk; buf.push(b.x,b.y);
+    if(!quiet){ S.bounces++; if(bk<S.n0) phasePoint((S.cum[bk]+bu*L)/S.per, b.vx*tx+b.vy*ty, b.color); }
+  }
+  buf.push(b.x,b.y);
+  if(!insideSeg(seg,b.x,b.y)){ b.x=b.sx; b.y=b.sy; b.vx=-b.vx; b.vy=-b.vy; b.last=-1; buf.length=0; }
+  else { b.sx=b.x; b.sy=b.y; }
+  return buf;
+}
+function nextColor(){ const c=TH.balls[S.colorIx%TH.balls.length]; S.colorIx++; return c; }
+function launch2d(x,y,ang){
+  const n=S.fanN, sp=S.spread*Math.PI/180, color=nextColor();
+  for(let i=0;i<n;i++){
+    const a=ang+(n>1 ? (i/(n-1)-.5)*sp : 0);
+    S.balls.push({x,y,sx:x,sy:y,vx:Math.cos(a),vy:Math.sin(a),last:-1,color: n>1 ? TH.balls[(S.colorIx+i)%TH.balls.length] : color});
+  }
+  if(S.balls.length>MAXB) S.balls.splice(0,S.balls.length-MAXB);
+}
+function launchRandom2d(){ const p=randomInside(); if(p) launch2d(p[0],p[1],Math.random()*TAU); }
+
+/* ---------- wavefront: many rays from one point, joined at equal time ---------- */
+function launchWave(x,y){
+  const n=S.rays, rays=new Array(n);
+  for(let i=0;i<n;i++){ const a=i/n*TAU; rays[i]={x,y,sx:x,sy:y,vx:Math.cos(a),vy:Math.sin(a),last:-1}; }
+  S.waves.push({rays, color:nextColor(), x0:x, y0:y, dist:0, age:0});
+  if(S.waves.length>MAXW) S.waves.shift();
+}
+function launchRandomWave(){ const p=randomInside(); if(p) launchWave(p[0],p[1]); }
+// k = pixel scale: 1 for the main context (already scaled by dpr), dpr for the raw trail canvas
+function frontPath(c, w, k){
+  const r=w.rays, n=r.length; c.beginPath();
+  for(let i=0;i<=n;i++){ const a=r[i%n], p=r[(i-1+n)%n], X=(cx+a.x*scale)*k, Y=(cy-a.y*scale)*k;
+    if(i===0 || (a.x-p.x)*(a.x-p.x)+(a.y-p.y)*(a.y-p.y)>GAP2) c.moveTo(X,Y); else c.lineTo(X,Y); }
+}
+
+function update2d(dt){
+  if(S.paused) return;
+  const d=1.1*S.speed*dt;
+  tctx.setTransform(1,0,0,1,0,0);
+  tctx.globalCompositeOperation=TH.blend; tctx.lineWidth=1.1*dpr; tctx.lineJoin='round';
+  tctx.globalAlpha = S.balls.length>60 ? .22 : S.balls.length>15 ? .32 : .5;
+  for(const b of S.balls){
+    const p=stepBall(b,d); if(p.length<4) continue;
+    tctx.strokeStyle=b.color; tctx.beginPath();
+    for(let i=0;i<p.length;i+=2){ const X=(cx+p[i]*scale)*dpr, Y=(cy-p[i+1]*scale)*dpr; i?tctx.lineTo(X,Y):tctx.moveTo(X,Y); }
+    tctx.stroke();
+  }
+  for(const w of S.waves){
+    for(const r of w.rays) stepBall(r,d,true);
+    w.dist+=d; w.age+=d;
+    if(S.iso && w.dist>=ISO_STEP){ w.dist-=ISO_STEP;
+      tctx.globalAlpha=TH.dark?.32:.4; tctx.lineWidth=1*dpr; tctx.strokeStyle=w.color; frontPath(tctx,w,dpr); tctx.stroke(); }
+  }
+  if(S.fade>0){ tctx.globalCompositeOperation='destination-out'; tctx.globalAlpha=1;
+    tctx.fillStyle='rgba(0,0,0,'+(Math.pow(S.fade/100,2)*.12+.004).toFixed(4)+')'; tctx.fillRect(0,0,trailC.width,trailC.height); }
+}
+function loopPath(c, loops){
+  c.beginPath();
+  for(const L of loops){ for(let i=0;i<L.length;i++){ const [X,Y]=toS(L[i][0],L[i][1]); i?c.lineTo(X,Y):c.moveTo(X,Y); } c.closePath(); }
+}
+let hover=null, drag=null;
+function draw2d(){
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,c2d.width,c2d.height);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  loopPath(ctx,S.loops); ctx.fillStyle=TH.table; ctx.fill('evenodd');
+  ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(trailC,0,0); ctx.setTransform(dpr,0,0,dpr,0,0);
+  loopPath(ctx,S.loops); ctx.lineWidth=2.6; ctx.lineJoin='round'; ctx.strokeStyle=TH.edge; ctx.stroke();
+  // balls
+  for(const b of S.balls){ const [X,Y]=toS(b.x,b.y);
+    ctx.beginPath(); ctx.arc(X,Y,4.6,0,TAU); ctx.fillStyle=b.color;
+    if(TH.dark){ ctx.shadowColor=b.color; ctx.shadowBlur=12; }
+    ctx.fill(); ctx.shadowBlur=0; ctx.lineWidth=1.4; ctx.strokeStyle=TH.panel; ctx.stroke(); }
+  // wavefronts
+  for(const w of S.waves){
+    if(w.age<.6){ const [X,Y]=toS(w.x0,w.y0); ctx.beginPath(); ctx.arc(X,Y,4,0,TAU); ctx.fillStyle=w.color; ctx.globalAlpha=1-w.age/.6; ctx.fill(); ctx.globalAlpha=1; }
+    frontPath(ctx,w,1); ctx.lineWidth=2.2; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle=w.color;
+    if(TH.dark){ ctx.shadowColor=w.color; ctx.shadowBlur=10; }
+    ctx.stroke(); ctx.shadowBlur=0;
+  }
+  // overlays
+  ctx.setLineDash([]);
+  if(hover && (S.tool==='warp'||S.tool==='smooth')){
+    const [X,Y]=toS(hover[0],hover[1]); ctx.beginPath(); ctx.arc(X,Y,S.radius*scale,0,TAU);
+    ctx.setLineDash([5,5]); ctx.lineWidth=1.3; ctx.strokeStyle=TH.ink; ctx.globalAlpha=.6; ctx.stroke(); ctx.globalAlpha=1; ctx.setLineDash([]);
+  }
+  if(drag && drag.type==='brush' && drag.pts.length>1){
+    ctx.beginPath(); drag.pts.forEach((p,i)=>{ const [X,Y]=toS(p[0],p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); });
+    ctx.lineWidth=3; ctx.lineCap='round'; ctx.strokeStyle=TH.accent; ctx.stroke();
+    const [X0,Y0]=toS(drag.pts[0][0],drag.pts[0][1]), l=drag.pts[drag.pts.length-1], [X1,Y1]=toS(l[0],l[1]);
+    ctx.beginPath(); ctx.moveTo(X1,Y1); ctx.lineTo(X0,Y0); ctx.setLineDash([4,6]); ctx.lineWidth=1.5; ctx.globalAlpha=.6; ctx.stroke(); ctx.globalAlpha=1; ctx.setLineDash([]);
+  }
+  if(drag && drag.type==='ball'){
+    const [X0,Y0]=toS(drag.x0,drag.y0), [X1,Y1]=toS(drag.x,drag.y), dx=X1-X0, dy=Y1-Y0, L=Math.hypot(dx,dy);
+    ctx.beginPath(); ctx.arc(X0,Y0,5,0,TAU); ctx.fillStyle=TH.accent; ctx.fill();
+    if(L>4){
+      const ang=Math.atan2(dy,dx), sp=S.fanN>1?S.spread*Math.PI/180:0;
+      ctx.strokeStyle=TH.accent; ctx.lineWidth=2;
+      if(sp>0){ ctx.globalAlpha=.35; for(const s of [-.5,.5]){ ctx.beginPath(); ctx.moveTo(X0,Y0); ctx.lineTo(X0+Math.cos(ang+s*sp)*L, Y0+Math.sin(ang+s*sp)*L); ctx.stroke(); } ctx.globalAlpha=1; }
+      ctx.beginPath(); ctx.moveTo(X0,Y0); ctx.lineTo(X1,Y1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X1,Y1); ctx.lineTo(X1-Math.cos(ang-.45)*11, Y1-Math.sin(ang-.45)*11);
+      ctx.moveTo(X1,Y1); ctx.lineTo(X1-Math.cos(ang+.45)*11, Y1-Math.sin(ang+.45)*11); ctx.stroke();
+    }
+  }
+  if(drag && drag.type==='stretch'){
+    const [a,b,c,d]=bbox(S.loops), [X0,Y0]=toS(a,d), [X1,Y1]=toS(c,b);
+    ctx.setLineDash([6,5]); ctx.lineWidth=1.2; ctx.strokeStyle=TH.ink; ctx.globalAlpha=.5; ctx.strokeRect(X0,Y0,X1-X0,Y1-Y0); ctx.globalAlpha=1; ctx.setLineDash([]);
+    ctx.font='600 12px '+cssv('--f-mono'); ctx.fillStyle=TH.ink;
+    ctx.fillText('↔ ×'+drag.fx.toFixed(2)+'   ↕ ×'+drag.fy.toFixed(2), drag.px+14, drag.py-12);
+  }
+}
+
+/* ---------- 2D input ---------- */
+function evPos(e){ const r=c2d.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+function centroid(){ const [a,b,c,d]=bbox(S.loops.slice(0,1)); return [(a+c)/2,(b+d)/2]; }
+function warpAt(x,y,dx,dy){ const r2=S.radius*S.radius;
+  for(const L of S.loops) for(const p of L){ const ex=p[0]-x, ey=p[1]-y, d2=ex*ex+ey*ey; if(d2<r2){ const f=1-d2/r2, w=f*f; p[0]+=dx*w; p[1]+=dy*w; } } }
+function smoothAt(x,y){ const r2=S.radius*S.radius;
+  for(const L of S.loops){ const n=L.length, c=L.map(q=>q.slice());
+    for(let i=0;i<n;i++){ const p=L[i], ex=p[0]-x, ey=p[1]-y, d2=ex*ex+ey*ey; if(d2>=r2) continue;
+      const w=(1-d2/r2)*.6, a=c[(i-1+n)%n], b=c[(i+1)%n]; p[0]+=((a[0]+b[0])/2-p[0])*w; p[1]+=((a[1]+b[1])/2-p[1])*w; } } }
+function needsResample(){ for(const L of S.loops){ const n=L.length; for(let i=0;i<n;i++){ const a=L[i], b=L[(i+1)%n]; if(Math.hypot(b[0]-a[0],b[1]-a[1])>SP*3) return true; } } return false; }
+
+c2d.addEventListener('pointerdown', e=>{
+  if(e.button>0) return;
+  c2d.setPointerCapture(e.pointerId);
+  const [px,py]=evPos(e), [x,y]=toW(px,py);
+  switch(S.tool){
+    case 'ball': if(insideSeg(S.seg,x,y)) drag={type:'ball',x0:x,y0:y,x,y}; else toast('Начните внутри стола'); break;
+    case 'brush': drag={type:'brush',pts:[[x,y]]}; break;
+    case 'stretch': drag={type:'stretch',sx:px,sy:py,px,py,fx:1,fy:1,orig:S.loops.map(L=>L.map(p=>p.slice())),c:centroid()}; break;
+    case 'warp': drag={type:'warp',lx:x,ly:y}; break;
+    case 'smooth': drag={type:'smooth'}; smoothAt(x,y); rebuild(); shapeChanged(); break;
+    case 'wave': if(insideSeg(S.seg,x,y)) launchWave(x,y); else toast('Начните внутри стола'); break;
+  }
+});
+c2d.addEventListener('pointermove', e=>{
+  const [px,py]=evPos(e), [x,y]=toW(px,py); hover=[x,y];
+  if(!drag) return;
+  if(drag.type==='ball'){ drag.x=x; drag.y=y; }
+  else if(drag.type==='brush'){ const l=drag.pts[drag.pts.length-1]; if(Math.hypot(x-l[0],y-l[1])>SP*.7) drag.pts.push([x,y]); }
+  else if(drag.type==='stretch'){
+    drag.fx=Math.exp((px-drag.sx)/220); drag.fy=Math.exp((drag.sy-py)/220); drag.px=px; drag.py=py;
+    const [ox,oy]=drag.c; S.loops=drag.orig.map(L=>L.map(p=>[ox+(p[0]-ox)*drag.fx, oy+(p[1]-oy)*drag.fy])); rebuild(); shapeChanged();
+  }
+  else if(drag.type==='warp'){ warpAt(x,y,x-drag.lx,y-drag.ly); drag.lx=x; drag.ly=y; if(needsResample()) S.loops=S.loops.map(L=>resample(L)); rebuild(); shapeChanged(); }
+  else if(drag.type==='smooth'){ smoothAt(x,y); rebuild(); shapeChanged(); }
+});
+function endDrag(e){
+  if(!drag) return; const d=drag; drag=null;
+  if(d.type==='ball'){
+    const dx=d.x-d.x0, dy=d.y-d.y0, ang=Math.hypot(dx,dy)*scale>6 ? Math.atan2(dy,dx) : Math.random()*TAU;
+    launch2d(d.x0,d.y0,ang);
+  } else if(d.type==='brush'){
+    let len=0; for(let i=1;i<d.pts.length;i++) len+=Math.hypot(d.pts[i][0]-d.pts[i-1][0], d.pts[i][1]-d.pts[i-1][1]);
+    if(d.pts.length<8 || len<.5){ toast('Линия слишком короткая — нарисуйте замкнутый контур побольше'); return; }
+    let L=relax(resample(d.pts),3,.5); L=resample(L);
+    if(S.target==='outer' || !S.loops.length){ S.preset=null; markPreset(); setLoops([L]); }
+    else setLoops([...S.loops, L]);
+    if(!S.balls.length) launchRandom2d();
+  } else if(d.type==='warp' || d.type==='smooth'){
+    S.loops=S.loops.map(L=>resample(L)); S.preset=null; markPreset(); rebuild(); shapeChanged();
+  } else if(d.type==='stretch'){ S.preset=null; markPreset(); }
+}
+c2d.addEventListener('pointerup', endDrag);
+c2d.addEventListener('pointercancel', ()=>{ drag=null; });
+c2d.addEventListener('pointerleave', ()=>{ if(!drag) hover=null; });
+
+/* ---------- 3D ---------- */
+const T = { ok:false, tried:false, shape:'ellipsoid', s:[1.45,.85,1.05], balls:[], trailLen:500, bounces:0, prismSeg:null, prismBox:[-1,-1,1,1], colorIx:0 };
+const MAXT=3002;
+let renderer, scene, camera, controls, group, ballGeo;
+function box3(x,y,z){ const qx=Math.abs(x)-1, qy=Math.abs(y)-1, qz=Math.abs(z)-1;
+  return Math.hypot(Math.max(qx,0),Math.max(qy,0),Math.max(qz,0))+Math.min(Math.max(qx,qy,qz),0); }
+function sd2(seg,x,y){ let m=Infinity;
+  for(let k=0;k<seg.length;k+=4){ const ax=seg[k], ay=seg[k+1], ex=seg[k+2]-ax, ey=seg[k+3]-ay, wx=x-ax, wy=y-ay;
+    let t=(wx*ex+wy*ey)/(ex*ex+ey*ey||1); t=t<0?0:t>1?1:t; const dx=wx-ex*t, dy=wy-ey*t, d=dx*dx+dy*dy; if(d<m) m=d; }
+  m=Math.sqrt(m); return insideSeg(seg,x,y) ? -m : m; }
+const SHAPES3 = [
+  ['sphere','Сфера',[1,1,1], (x,y,z)=>Math.hypot(x,y,z)-1],
+  ['ellipsoid','Эллипсоид',[1.45,.85,1.05], (x,y,z)=>Math.hypot(x,y,z)-1],
+  ['cube','Куб',[1,1,1], box3],
+  ['cylinder','Цилиндр',[1,1,1], (x,y,z)=>Math.max(Math.hypot(x,z)-1, Math.abs(y)-1)],
+  ['torus','Тор',[1,1,1], (x,y,z)=>Math.hypot(Math.hypot(x,z)-.85,y)-.42],
+  ['capsule','3D-стадион',[1,1,1], (x,y,z)=>{ const q=x-Math.max(-.7,Math.min(.7,x)); return Math.hypot(q,y,z)-.65; }],
+  ['sinai','Синай 3D',[1,1,1], (x,y,z)=>Math.max(box3(x,y,z), .45-Math.hypot(x,y,z))],
+  ['prism','Призма из 2D',[1,1,1], (x,y,z)=>Math.max(sd2(T.prismSeg,x,-z), Math.abs(y)-.45)],
+];
+const shapeDef = id => SHAPES3.find(s=>s[0]===id);
+function F(x,y,z){ const s=T.s; return T.sdf(x/s[0], y/s[1], z/s[2]); }
+
+function initThree(){
+  T.tried=true;
+  if(typeof THREE==='undefined' || !THREE.OrbitControls){ $('#err3d').hidden=false; return false; }
+  const el=$('#three');
+  renderer=new THREE.WebGLRenderer({antialias:true, alpha:true}); renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.setClearColor(0x000000,0); el.appendChild(renderer.domElement);
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(42,1,.01,100); camera.position.set(2.3,1.7,2.9);
+  controls=new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping=true; controls.dampingFactor=.08; controls.autoRotateSpeed=1.2;
+  controls.minDistance=1.2; controls.maxDistance=14;
+  scene.add(new THREE.AmbientLight(0xffffff,.6));
+  const dl=new THREE.DirectionalLight(0xffffff,.75); dl.position.set(3,5,2); scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0xffffff,.3); dl2.position.set(-3,-2,-4); scene.add(dl2);
+  group=new THREE.Group(); scene.add(group);
+  ballGeo=new THREE.SphereGeometry(.035,16,12);
+  T.ok=true; resize3d(); return true;
+}
+function resize3d(){ if(!T.ok) return; const r=stage.getBoundingClientRect(); renderer.setSize(r.width,r.height,false);
+  renderer.domElement.style.width=r.width+'px'; renderer.domElement.style.height=r.height+'px';
+  camera.aspect=r.width/Math.max(1,r.height); camera.updateProjectionMatrix(); }
+function disposeGroup(){ while(group.children.length){ const c=group.children.pop(); c.geometry&&c.geometry.dispose(); c.material&&c.material.dispose(); } }
+function snapshotPrism(){ T.prismSeg=Float64Array.from(S.seg); T.prismBox=bbox(S.loops); }
+function buildMesh(){
+  if(!T.ok) return; disposeGroup();
+  const col=new THREE.Color(TH.accent);
+  const skin=()=>new THREE.MeshPhongMaterial({color:col, transparent:true, opacity:TH.dark?.13:.16, side:THREE.DoubleSide, depthWrite:false, shininess:80, specular:0x555555});
+  const wireM=()=>new THREE.MeshBasicMaterial({color:col, wireframe:true, transparent:true, opacity:TH.dark?.16:.22});
+  const lineM=()=>new THREE.LineBasicMaterial({color:col, transparent:true, opacity:.75});
+  const add=(geo,wire)=>{ group.add(new THREE.Mesh(geo,skin())); if(wire) group.add(wire); };
+  switch(T.shape){
+    case 'sphere': case 'ellipsoid':
+      add(new THREE.SphereGeometry(1,64,40), new THREE.Mesh(new THREE.SphereGeometry(1,24,14), wireM())); break;
+    case 'cube': { const g=new THREE.BoxGeometry(2,2,2); add(g, new THREE.LineSegments(new THREE.EdgesGeometry(g), lineM())); break; }
+    case 'cylinder': { const g=new THREE.CylinderGeometry(1,1,2,64,1);
+      add(g, new THREE.LineSegments(new THREE.EdgesGeometry(g,20), lineM())); group.add(new THREE.Mesh(new THREE.CylinderGeometry(1,1,2,24,4,true), wireM())); break; }
+    case 'torus': { const g=new THREE.TorusGeometry(.85,.42,40,120); g.rotateX(Math.PI/2);
+      const w=new THREE.TorusGeometry(.85,.42,12,40); w.rotateX(Math.PI/2); add(g, new THREE.Mesh(w,wireM())); break; }
+    case 'capsule': { const pts=[]; const r=.65, h=.7;
+      for(let i=0;i<=24;i++){ const a=-Math.PI/2+i/24*Math.PI/2; pts.push(new THREE.Vector2(Math.max(1e-4,r*Math.cos(a)), -h+r*Math.sin(a))); }
+      for(let i=0;i<=24;i++){ const a=i/24*Math.PI/2; pts.push(new THREE.Vector2(Math.max(1e-4,r*Math.cos(a)), h+r*Math.sin(a))); }
+      const g=new THREE.LatheGeometry(pts,64); g.rotateZ(-Math.PI/2); const w=new THREE.LatheGeometry(pts.filter((_,i)=>i%4===0),20); w.rotateZ(-Math.PI/2);
+      add(g, new THREE.Mesh(w,wireM())); break; }
+    case 'sinai': { const g=new THREE.BoxGeometry(2,2,2); add(g, new THREE.LineSegments(new THREE.EdgesGeometry(g), lineM()));
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(.45,48,32), new THREE.MeshPhongMaterial({color:col, shininess:90, specular:0x664422}))); break; }
+    case 'prism': {
+      const loops=S.loops; const sh=new THREE.Shape(loops[0].map(p=>new THREE.Vector2(p[0],p[1])));
+      for(let i=1;i<loops.length;i++) sh.holes.push(new THREE.Path(loops[i].map(p=>new THREE.Vector2(p[0],p[1]))));
+      const g=new THREE.ExtrudeGeometry(sh,{depth:.9, bevelEnabled:false, curveSegments:1}); g.translate(0,0,-.45); g.rotateX(-Math.PI/2);
+      add(g, new THREE.LineSegments(new THREE.EdgesGeometry(g,35), lineM())); break; }
+  }
+  group.scale.set(T.s[0],T.s[1],T.s[2]);
+}
+function setShape3(id, keepScale){
+  const def=shapeDef(id); T.shape=id; T.sdf=def[3];
+  if(!keepScale){ T.s=def[2].slice(); ['sx','sy','sz'].forEach((k,i)=>{ $('#'+k).value=T.s[i]; outs(); }); }
+  if(id==='prism') snapshotPrism();
+  $$('#shapes3d .chip').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.shape===id)));
+  buildMesh(); fixBalls3(true);
+}
+function boundR(){ const s=T.s; let r=1.4; if(T.shape==='prism'){ const b=T.prismBox; r=Math.max(...b.map(Math.abs))+.05; } return [r*s[0], 1.1*s[1]*(T.shape==='prism'?.5:1.25), r*s[2]]; }
+function randomInside3(){ const [rx,ry,rz]=boundR();
+  for(let i=0;i<4000;i++){ const x=(Math.random()*2-1)*rx, y=(Math.random()*2-1)*ry, z=(Math.random()*2-1)*rz; if(F(x,y,z)<-.04) return [x,y,z]; }
+  return null; }
+function randDir(){ const u=Math.random()*2-1, a=Math.random()*TAU, r=Math.sqrt(1-u*u); return [r*Math.cos(a), u, r*Math.sin(a)]; }
+function addBall3(p,v,color){
+  const mesh=new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({color:new THREE.Color(color)}));
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAXT*3),3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAXT*3),3));
+  geo.setDrawRange(0,0);
+  const line=new THREE.Line(geo, new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:.95}));
+  line.frustumCulled=false; scene.add(mesh); scene.add(line);
+  T.balls.push({p:p.slice(), v, col:color, c:new THREE.Color(color), mesh, line, geo, pts:[p.slice()]});
+  if(T.balls.length>MAXB) removeBall3(T.balls[0]);
+}
+function removeBall3(b){ scene.remove(b.mesh); scene.remove(b.line); b.mesh.material.dispose(); b.geo.dispose(); b.line.material.dispose(); T.balls.splice(T.balls.indexOf(b),1); }
+function launch3d(){
+  const p=randomInside3(); if(!p){ toast('Не нашёл свободного места внутри формы'); return; }
+  const d=randDir(); let r=randDir(); let u=[d[1]*r[2]-d[2]*r[1], d[2]*r[0]-d[0]*r[2], d[0]*r[1]-d[1]*r[0]]; const ul=Math.hypot(...u)||1; u=u.map(q=>q/ul);
+  const n=S.fanN, sp=S.spread*Math.PI/180;
+  for(let i=0;i<n;i++){ const a=n>1?(i/(n-1)-.5)*sp:0, c=Math.cos(a), s=Math.sin(a);
+    addBall3(p,[d[0]*c+u[0]*s, d[1]*c+u[1]*s, d[2]*c+u[2]*s], TH.balls[(T.colorIx+i)%TH.balls.length]); }
+  T.colorIx+=Math.max(1,n);
+}
+function fixBalls3(clearTr){ for(const b of T.balls){ if(F(...b.p)>=0){ const p=randomInside3(); if(p) b.p=p; } if(clearTr) b.pts=[b.p.slice()]; } }
+function step3(b, dist){
+  const Hs=.02; let [x,y,z]=b.p, [vx,vy,vz]=b.v, rem=dist, g=0;
+  while(rem>1e-9 && g++<400){
+    const d=Math.min(Hs,rem), nx=x+vx*d, ny=y+vy*d, nz=z+vz*d;
+    if(F(nx,ny,nz)<0){ x=nx; y=ny; z=nz; rem-=d; continue; }
+    let lo=0, hi=d; for(let i=0;i<30;i++){ const m=(lo+hi)/2; if(F(x+vx*m,y+vy*m,z+vz*m)<0) lo=m; else hi=m; }
+    x+=vx*lo; y+=vy*lo; z+=vz*lo; rem-=lo;
+    const e=1e-4; let gx=F(x+e,y,z)-F(x-e,y,z), gy=F(x,y+e,z)-F(x,y-e,z), gz=F(x,y,z+e)-F(x,y,z-e); const gl=Math.hypot(gx,gy,gz)||1; gx/=gl; gy/=gl; gz/=gl;
+    const dn=vx*gx+vy*gy+vz*gz;
+    if(dn>0){ vx-=2*dn*gx; vy-=2*dn*gy; vz-=2*dn*gz; } else { vx=-vx; vy=-vy; vz=-vz; }
+    const vl=Math.hypot(vx,vy,vz)||1; vx/=vl; vy/=vl; vz/=vl;
+    b.pts.push([x,y,z]); T.bounces++;
+  }
+  if(F(x,y,z)>=0){ const p=randomInside3(); if(p){ [x,y,z]=p; b.pts=[p.slice()]; } }
+  b.p=[x,y,z]; b.v=[vx,vy,vz];
+  if(b.pts.length>T.trailLen) b.pts.splice(0,b.pts.length-T.trailLen);
+}
+let bg3=null;
+function updTrail(b){
+  const pts=b.pts, n=pts.length, pos=b.geo.attributes.position.array, col=b.geo.attributes.color.array, c=b.c;
+  for(let i=0;i<=n;i++){ const p=i<n?pts[i]:b.p, t=Math.pow((i+1)/(n+1),1.4)*.92+.08;
+    pos[i*3]=p[0]; pos[i*3+1]=p[1]; pos[i*3+2]=p[2];
+    col[i*3]=bg3.r+(c.r-bg3.r)*t; col[i*3+1]=bg3.g+(c.g-bg3.g)*t; col[i*3+2]=bg3.b+(c.b-bg3.b)*t; }
+  b.geo.setDrawRange(0,n+1); b.geo.attributes.position.needsUpdate=true; b.geo.attributes.color.needsUpdate=true;
+  b.mesh.position.set(b.p[0],b.p[1],b.p[2]);
+}
+function update3d(dt){
+  if(!S.paused){ const d=1.0*S.speed*dt; for(const b of T.balls) step3(b,d); }
+  bg3=new THREE.Color(TH.bg); for(const b of T.balls) updTrail(b);
+  controls.update(); renderer.render(scene,camera);
+}
+
+/* ---------- UI ---------- */
+let mode='2d';
+const HINTS={
+  ball:'Нажмите внутри стола и потяните, чтобы задать направление удара. Короткий клик — случайное направление.',
+  brush:'Нарисуйте контур одним движением — конец сам соединится с началом.',
+  stretch:'Тяните вправо или влево — форма растягивается по ширине, вверх или вниз — по высоте.',
+  warp:'Ведите кистью по границе, чтобы выдавить её наружу или вдавить внутрь.',
+  smooth:'Проведите кистью по границе, чтобы сгладить углы и неровности.',
+  wave:'Нажмите внутри стола — из точки пойдёт круговая волна. В эллипсе волна из фокуса соберётся во втором фокусе.',
+  '3d':'Вращайте сцену мышью или пальцем, колесо или щипок — масштаб. Шары запускает кнопка слева.',
+};
+function setHint(){ $('#hint').textContent = mode==='3d' ? HINTS['3d'] : HINTS[S.tool]; }
+let toastT=0;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2200); }
+
+$$('[data-tool]').forEach(b=>b.addEventListener('click',()=>{
+  S.tool=b.dataset.tool; $$('[data-tool]').forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+  $$('.opts').forEach(o=>o.hidden=!o.dataset.for.split(' ').includes(S.tool));
+  c2d.style.cursor = S.tool==='stretch'?'move':(S.tool==='warp'||S.tool==='smooth')?'none':'crosshair';
+  setHint();
+}));
+$$('[data-target]').forEach(b=>b.addEventListener('click',()=>{ S.target=b.dataset.target; $$('[data-target]').forEach(x=>x.setAttribute('aria-pressed', String(x===b))); }));
+
+function outs(){
+  $('#radiusOut').textContent=(+$('#radius').value).toFixed(2);
+  $('#fanNOut').textContent=$('#fanN').value;
+  $('#spreadOut').textContent=(+$('#spread').value).toFixed(1)+'°';
+  $('#speedOut').textContent='×'+(+$('#speed').value).toFixed(1);
+  $('#fadeOut').textContent=+$('#fade').value ? $('#fade').value+'%' : 'нет';
+  ['sx','sy','sz'].forEach(k=>$('#'+k+'Out').textContent='×'+(+$('#'+k).value).toFixed(2));
+  $('#trail3Out').textContent=$('#trail3').value;
+  $('#raysOut').textContent=$('#rays').value;
+}
+$('#rays').addEventListener('input',e=>{ S.rays=+e.target.value; outs(); });
+$('#iso').addEventListener('change',e=>{ S.iso=e.target.checked; });
+$('#radius').addEventListener('input',e=>{ S.radius=+e.target.value; outs(); });
+$('#fanN').addEventListener('input',e=>{ S.fanN=+e.target.value; outs(); });
+$('#spread').addEventListener('input',e=>{ S.spread=+e.target.value; outs(); });
+$('#speed').addEventListener('input',e=>{ S.speed=+e.target.value; outs(); });
+$('#fade').addEventListener('input',e=>{ S.fade=+e.target.value; outs(); });
+$('#trail3').addEventListener('input',e=>{ T.trailLen=+e.target.value; outs(); });
+$('#autorot').addEventListener('change',e=>{ if(controls) controls.autoRotate=e.target.checked; });
+$('#showPhase').addEventListener('change',e=>{ S.showPhase=e.target.checked; $('#phaseBox').hidden=!S.showPhase||mode==='3d'; clearPhase(); });
+['sx','sy','sz'].forEach((k,i)=>$('#'+k).addEventListener('input',e=>{ T.s[i]=+e.target.value; outs(); if(T.ok){ group.scale.set(...T.s); fixBalls3(true); } }));
+
+$('#bLaunch').addEventListener('click',()=>{ mode==='2d' ? (S.tool==='wave' ? launchRandomWave() : launchRandom2d()) : T.ok && launch3d(); });
+$('#bPause').addEventListener('click',togglePause);
+function togglePause(){ S.paused=!S.paused; $('#bPause').textContent=S.paused?'Продолжить':'Пауза'; }
+$('#bClear').addEventListener('click',()=>{ if(mode==='2d'){ clearTrails(); clearPhase(); } else T.balls.forEach(b=>b.pts=[b.p.slice()]); });
+$('#bRemove').addEventListener('click',()=>{ if(mode==='2d'){ S.balls=[]; S.waves=[]; } else { while(T.balls.length) removeBall3(T.balls[0]); } });
+window.addEventListener('keydown',e=>{
+  if(/INPUT|BUTTON|TEXTAREA/.test(document.activeElement.tagName) && e.code==='Space') return;
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.code==='Space'){ e.preventDefault(); togglePause(); }
+  else if(e.code==='KeyF'){ e.preventDefault(); toggleFull(); }
+});
+
+/* ---------- theme & fullscreen buttons ---------- */
+const ICON={
+  moon:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  full:'<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  exit:'<svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+};
+const isDark=()=>{ const t=root.dataset.theme; return t ? t==='dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
+function setThemeIcon(){ const d=isDark(), b=$('#bTheme'); b.innerHTML=d?ICON.sun:ICON.moon; b.title=d?'Светлая тема':'Тёмная тема'; }
+$('#bTheme').addEventListener('click',()=>{ const t=isDark()?'light':'dark'; root.dataset.theme=t; try{ localStorage.setItem('mb-theme',t); }catch(e){} });
+const fsElement=()=>document.fullscreenElement||document.webkitFullscreenElement;
+const fsApi=!!(document.fullscreenEnabled||document.webkitFullscreenEnabled);
+function toggleFull(){
+  if(!fsApi){ stage.classList.toggle('max'); setFullIcon(); return; } // e.g. iPhone Safari: fill the window instead
+  if(fsElement()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); return; }
+  const req=stage.requestFullscreen||stage.webkitRequestFullscreen; if(req) req.call(stage);
+}
+function setFullIcon(){ const on=!!fsElement()||stage.classList.contains('max'), b=$('#bFull'); b.innerHTML=on?ICON.exit:ICON.full; b.title=on?'Выйти из полноэкранного режима (F)':'На весь экран (F)'; }
+$('#bFull').addEventListener('click',toggleFull);
+document.addEventListener('fullscreenchange',setFullIcon); document.addEventListener('webkitfullscreenchange',setFullIcon);
+window.addEventListener('keydown',e=>{ if(e.code==='Escape' && stage.classList.contains('max')){ stage.classList.remove('max'); setFullIcon(); } });
+setThemeIcon(); setFullIcon();
+
+// preset chips with thumbnails
+function drawThumb(cv, loops){
+  const d=Math.min(window.devicePixelRatio||1,2), w=44, h=32; cv.width=w*d; cv.height=h*d; const c=cv.getContext('2d'); c.setTransform(d,0,0,d,0,0);
+  const [a,b,e,f]=bbox(loops), s=Math.min((w-6)/(e-a),(h-6)/(f-b)), ox=w/2-(a+e)/2*s, oy=h/2+(b+f)/2*s;
+  c.beginPath(); for(const L of loops){ L.forEach((p,i)=>{ const X=ox+p[0]*s, Y=oy-p[1]*s; i?c.lineTo(X,Y):c.moveTo(X,Y); }); c.closePath(); }
+  c.fillStyle=TH.table; c.fill('evenodd'); c.lineWidth=1.5; c.strokeStyle=TH.edge; c.stroke();
+}
+const presetBox=$('#presets');
+for(const [id,name,fn] of PRESETS){
+  const b=document.createElement('button'); b.className='chip'; b.dataset.preset=id; b.setAttribute('aria-pressed','false');
+  const cv=document.createElement('canvas'); b.append(cv, document.createTextNode(name)); presetBox.append(b);
+  b.addEventListener('click',()=>{ S.preset=id; markPreset(); setLoops(fn()); if(!S.balls.length) launchRandom2d(); });
+}
+function drawThumbs(){ $$('#presets .chip').forEach(b=>drawThumb(b.querySelector('canvas'), PRESETS.find(p=>p[0]===b.dataset.preset)[2]())); }
+function markPreset(){ $$('#presets .chip').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.preset===S.preset))); }
+const shapeBox=$('#shapes3d');
+for(const [id,name] of SHAPES3){
+  const b=document.createElement('button'); b.className='chip'; b.dataset.shape=id; b.textContent=name; b.setAttribute('aria-pressed','false');
+  b.addEventListener('click',()=>{ if(T.ok){ setShape3(id); while(T.balls.length) removeBall3(T.balls[0]); for(let i=0;i<3;i++) launch3d(); } });
+  shapeBox.append(b);
+}
+
+function setMode(m){
+  mode=m; $$('[data-mode]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.mode===m)));
+  $$('[data-only]').forEach(s=>s.hidden=s.dataset.only!==m);
+  c2d.hidden=m!=='2d'; $('#three').hidden=m!=='3d'; $('#phaseBox').hidden=m!=='2d'||!S.showPhase;
+  if(m==='3d'){
+    if(!T.tried){ if(initThree()){ setShape3(T.shape, true); ['sx','sy','sz'].forEach((k,i)=>$('#'+k).value=T.s[i]); outs(); for(let i=0;i<3;i++) launch3d(); } }
+    else if(T.ok && T.shape==='prism'){ setShape3('prism', true); }
+    resize3d();
+  } else { $('#err3d').hidden=true; }
+  setHint();
+}
+$$('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+
+function onTheme(){
+  const old=TH.balls; readTheme(); setThemeIcon();
+  // repaint balls and waves with the same palette slot in the new theme
+  const map=c=>{ const i=old.indexOf(c); return i<0 ? c : TH.balls[i]; };
+  for(const b of S.balls) b.color=map(b.color);
+  for(const w of S.waves) w.color=map(w.color);
+  for(const b of T.balls){ b.col=map(b.col); b.c.set(b.col); b.mesh.material.color.set(b.col); }
+  drawThumbs(); clearTrails(); clearPhase(); if(T.ok) buildMesh();
+}
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme); }catch(e){}
+new MutationObserver(onTheme).observe(root,{attributes:true, attributeFilter:['data-theme']});
+new ResizeObserver(()=>{ resize2d(); clearTrails(); clearPhase(); resize3d(); }).observe(stage);
+
+/* ---------- start ---------- */
+outs(); resize2d(); drawThumbs();
+S.preset='ellipse'; markPreset(); setLoops(PRESETS[1][2]());
+launch2d(.35,.05,.9); launch2d(-.1,.45,-.25);
+setHint();
+
+let last=performance.now(), statT=0;
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000); last=now;
+  if(mode==='2d'){ update2d(dt); draw2d(); } else if(T.ok){ update3d(dt); }
+  if(now-statT>150){ statT=now; const n=mode==='2d'?S.balls.length:T.balls.length, k=mode==='2d'?S.bounces:T.bounces;
+    $('#stats').innerHTML='шаров <b>'+n+'</b> · отражений <b>'+k.toLocaleString('ru-RU')+'</b>'
+      +(mode==='2d'&&S.waves.length ? ' · волн <b>'+S.waves.length+'</b>' : ''); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
